@@ -1,0 +1,4 @@
+Hoi quy tuyen tinh 0.466
+one all errorn 0.15
+mlp 0.84
+km 0.6767949674939076
