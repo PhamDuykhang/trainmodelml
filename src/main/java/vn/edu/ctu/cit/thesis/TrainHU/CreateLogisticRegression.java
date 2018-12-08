@@ -1,10 +1,10 @@
-package vn.edu.ctu.cit.thesis;
+package vn.edu.ctu.cit.thesis.TrainHU;
 
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
-import org.apache.spark.ml.classification.MultilayerPerceptronClassificationModel;
-import org.apache.spark.ml.classification.MultilayerPerceptronClassifier;
-import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator;
+import org.apache.spark.ml.classification.LogisticRegression;
+import org.apache.spark.ml.classification.LogisticRegressionModel;
+import org.apache.spark.ml.classification.LogisticRegressionTrainingSummary;
 import org.apache.spark.ml.feature.VectorAssembler;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
@@ -16,14 +16,14 @@ import org.apache.spark.sql.types.StructType;
 
 import java.io.IOException;
 
-public class MultilayerClass {
+public class CreateLogisticRegression {
     private static final String APP_NAME = "ProcessData";
-    private static final String JSON_FILE_PATH = "data/newdataset/*";
+    private static final String JSON_FILE_PATH = "data/stable/*";
     private static final String HDFS_PATH = "hdfs://localhost:9000/data/";
     private static final String MODEL_NAME = "Kmean_model";
     private static final String VERSION = "1.0";
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         SparkConf sparkconf = new SparkConf()
                 .setAppName(APP_NAME)
                 .setMaster("local");
@@ -65,7 +65,6 @@ public class MultilayerClass {
                 .option("Charset", "utf-8")
                 .schema(DicomFileDataSchema)
                 .json(JSON_FILE_PATH);
-
         String[] arrayColFeatures = {"Area", "CentroidX", "CentroidY", "Perimeter", "DistanceWithSkull", "Diameter"
                 , "Solidity", "BBULX", "BBULY", "BBWith", "BBHeight", "FilledArea", "Extent", "Eccentricity", "MajorAxisLength"
                 , "MinorAxisLength", "Orientation"};
@@ -73,32 +72,84 @@ public class MultilayerClass {
                 .setInputCols(arrayColFeatures)
                 .setOutputCol("vector_features");
         Dataset<Row> data = vector_assembler_chose_feature.transform(input_data_raw);
+
+        System.out.println("Totall: " + input_data_raw.count());
+        int stop_flag = 0;
+
         Dataset<Row>[] data_slipt = data.randomSplit(weights);
         Dataset<Row> train_data = data_slipt[0];
         Dataset<Row> test_data = data_slipt[1];
-        int[] layers = new int[]{17, 10, 7, 5, 4};
-        MultilayerPerceptronClassifier trainer = new MultilayerPerceptronClassifier()
-                .setLayers(layers)
-                .setBlockSize(128)
-                .setSeed(1234L)
-                .setLabelCol("Label")
+        LogisticRegression lr = new LogisticRegression()
+                .setMaxIter(100000)
+                .setRegParam(0)
+                .setElasticNetParam(0)
                 .setFeaturesCol("vector_features")
-                .setMaxIter(10000);
-        MultilayerPerceptronClassificationModel model = trainer.fit(train_data);
-        Dataset<Row> result = model.transform(test_data);
-        Dataset<Row> predictionAndLabels = result.select("prediction", "Label");
-        MulticlassClassificationEvaluator evaluator = new MulticlassClassificationEvaluator()
-                .setMetricName("accuracy").setLabelCol("Label");
-        System.out.println("Test set accuracy = " + evaluator.evaluate(predictionAndLabels));
-        double accc = evaluator.evaluate(predictionAndLabels);
-        if (accc >= 0.9) {
-            try {
-                model.save("data/mlp_" + String.format("%.3f", accc));
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-
+                .setLabelCol("Label")
+                .setPredictionCol("reuslt");
+        LogisticRegressionModel lrModel = lr.fit(train_data);
+        System.out.println("Coefficients: \n"
+                + lrModel.coefficientMatrix() + " \nIntercept: " + lrModel.interceptVector());
+        LogisticRegressionTrainingSummary trainingSummary = lrModel.summary();
+        double[] objectiveHistory = trainingSummary.objectiveHistory();
+        for (double lossPerIteration : objectiveHistory) {
+            System.out.println(lossPerIteration);
         }
+
+        System.out.println("False positive rate by label:");
+        int i = 0;
+        double[] fprLabel = trainingSummary.falsePositiveRateByLabel();
+        for (double fpr : fprLabel) {
+            System.out.println("label " + i + ": " + fpr);
+            i++;
+        }
+
+        System.out.println("True positive rate by label:");
+        i = 0;
+        double[] tprLabel = trainingSummary.truePositiveRateByLabel();
+        for (double tpr : tprLabel) {
+            System.out.println("label " + i + ": " + tpr);
+            i++;
+        }
+
+        System.out.println("Precision by label:");
+        i = 0;
+        double[] precLabel = trainingSummary.precisionByLabel();
+        for (double prec : precLabel) {
+            System.out.println("label " + i + ": " + prec);
+            i++;
+        }
+
+        System.out.println("Recall by label:");
+        i = 0;
+        double[] recLabel = trainingSummary.recallByLabel();
+        for (double rec : recLabel) {
+            System.out.println("label " + i + ": " + rec);
+            i++;
+        }
+
+        System.out.println("F-measure by label:");
+        i = 0;
+        double[] fLabel = trainingSummary.fMeasureByLabel();
+        for (double f : fLabel) {
+            System.out.println("label " + i + ": " + f);
+            i++;
+        }
+
+        double accuracy = trainingSummary.accuracy();
+        double falsePositiveRate = trainingSummary.weightedFalsePositiveRate();
+        double truePositiveRate = trainingSummary.weightedTruePositiveRate();
+        double fMeasure = trainingSummary.weightedFMeasure();
+        double precision = trainingSummary.weightedPrecision();
+        double recall = trainingSummary.weightedRecall();
+        System.out.println("Accuracy: " + accuracy);
+        System.out.println("FPR: " + falsePositiveRate);
+        System.out.println("TPR: " + truePositiveRate);
+        System.out.println("F-measure: " + fMeasure);
+        System.out.println("Precision: " + precision);
+        System.out.println("Recall: " + recall);
+        System.out.println("Reg" + lr.getRegParam());
+        System.out.println("EL" + lr.getElasticNetParam());
+        lrModel.save("data/lr" + String.format("%.3f", accuracy));
 
     }
 }

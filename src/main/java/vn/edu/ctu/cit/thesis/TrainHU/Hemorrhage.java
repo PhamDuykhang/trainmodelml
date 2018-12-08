@@ -1,4 +1,4 @@
-package vn.edu.ctu.cit.thesis;
+package vn.edu.ctu.cit.thesis.TrainHU;
 
 public class Hemorrhage {
     private String PatientID; //id benh nhan

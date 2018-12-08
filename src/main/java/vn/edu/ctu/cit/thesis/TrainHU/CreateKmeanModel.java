@@ -1,10 +1,10 @@
-package vn.edu.ctu.cit.thesis;
+package vn.edu.ctu.cit.thesis.TrainHU;
 
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
-import org.apache.spark.ml.classification.LogisticRegression;
-import org.apache.spark.ml.classification.LogisticRegressionModel;
-import org.apache.spark.ml.classification.LogisticRegressionTrainingSummary;
+import org.apache.spark.ml.clustering.KMeans;
+import org.apache.spark.ml.clustering.KMeansModel;
+import org.apache.spark.ml.evaluation.ClusteringEvaluator;
 import org.apache.spark.ml.feature.VectorAssembler;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
@@ -14,16 +14,15 @@ import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 
-import java.io.IOException;
-
-public class CreateLogisticRegression {
+public class CreateKmeanModel {
     private static final String APP_NAME = "ProcessData";
-    private static final String JSON_FILE_PATH = "data/stable/*";
+    private static final String CSV_FILE_PATH = "data/stable/*";
+    private static final String JSON_FILE_PATH = "data/newdataset/*";
     private static final String HDFS_PATH = "hdfs://localhost:9000/data/";
     private static final String MODEL_NAME = "Kmean_model";
     private static final String VERSION = "1.0";
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) {
         SparkConf sparkconf = new SparkConf()
                 .setAppName(APP_NAME)
                 .setMaster("local");
@@ -65,6 +64,7 @@ public class CreateLogisticRegression {
                 .option("Charset", "utf-8")
                 .schema(DicomFileDataSchema)
                 .json(JSON_FILE_PATH);
+        System.out.println("The schema of data");
         String[] arrayColFeatures = {"Area", "CentroidX", "CentroidY", "Perimeter", "DistanceWithSkull", "Diameter"
                 , "Solidity", "BBULX", "BBULY", "BBWith", "BBHeight", "FilledArea", "Extent", "Eccentricity", "MajorAxisLength"
                 , "MinorAxisLength", "Orientation"};
@@ -72,84 +72,23 @@ public class CreateLogisticRegression {
                 .setInputCols(arrayColFeatures)
                 .setOutputCol("vector_features");
         Dataset<Row> data = vector_assembler_chose_feature.transform(input_data_raw);
-
-        System.out.println("Totall: " + input_data_raw.count());
-        int stop_flag = 0;
+        KMeans kMeans = new KMeans()
+                .setK(4)
+                .setFeaturesCol("vector_features")
+                .setPredictionCol("Cluster");
 
         Dataset<Row>[] data_slipt = data.randomSplit(weights);
         Dataset<Row> train_data = data_slipt[0];
         Dataset<Row> test_data = data_slipt[1];
-        LogisticRegression lr = new LogisticRegression()
-                .setMaxIter(100000)
-                .setRegParam(0)
-                .setElasticNetParam(0)
-                .setFeaturesCol("vector_features")
-                .setLabelCol("Label")
-                .setPredictionCol("reuslt");
-        LogisticRegressionModel lrModel = lr.fit(train_data);
-        System.out.println("Coefficients: \n"
-                + lrModel.coefficientMatrix() + " \nIntercept: " + lrModel.interceptVector());
-        LogisticRegressionTrainingSummary trainingSummary = lrModel.summary();
-        double[] objectiveHistory = trainingSummary.objectiveHistory();
-        for (double lossPerIteration : objectiveHistory) {
-            System.out.println(lossPerIteration);
-        }
-
-        System.out.println("False positive rate by label:");
-        int i = 0;
-        double[] fprLabel = trainingSummary.falsePositiveRateByLabel();
-        for (double fpr : fprLabel) {
-            System.out.println("label " + i + ": " + fpr);
-            i++;
-        }
-
-        System.out.println("True positive rate by label:");
-        i = 0;
-        double[] tprLabel = trainingSummary.truePositiveRateByLabel();
-        for (double tpr : tprLabel) {
-            System.out.println("label " + i + ": " + tpr);
-            i++;
-        }
-
-        System.out.println("Precision by label:");
-        i = 0;
-        double[] precLabel = trainingSummary.precisionByLabel();
-        for (double prec : precLabel) {
-            System.out.println("label " + i + ": " + prec);
-            i++;
-        }
-
-        System.out.println("Recall by label:");
-        i = 0;
-        double[] recLabel = trainingSummary.recallByLabel();
-        for (double rec : recLabel) {
-            System.out.println("label " + i + ": " + rec);
-            i++;
-        }
-
-        System.out.println("F-measure by label:");
-        i = 0;
-        double[] fLabel = trainingSummary.fMeasureByLabel();
-        for (double f : fLabel) {
-            System.out.println("label " + i + ": " + f);
-            i++;
-        }
-
-        double accuracy = trainingSummary.accuracy();
-        double falsePositiveRate = trainingSummary.weightedFalsePositiveRate();
-        double truePositiveRate = trainingSummary.weightedTruePositiveRate();
-        double fMeasure = trainingSummary.weightedFMeasure();
-        double precision = trainingSummary.weightedPrecision();
-        double recall = trainingSummary.weightedRecall();
-        System.out.println("Accuracy: " + accuracy);
-        System.out.println("FPR: " + falsePositiveRate);
-        System.out.println("TPR: " + truePositiveRate);
-        System.out.println("F-measure: " + fMeasure);
-        System.out.println("Precision: " + precision);
-        System.out.println("Recall: " + recall);
-        System.out.println("Reg" + lr.getRegParam());
-        System.out.println("EL" + lr.getElasticNetParam());
-        lrModel.save("data/lr" + String.format("%.3f", accuracy));
-
+        System.out.println("Total: " + train_data.count() + " train data");
+        System.out.println("Total: " + test_data.count() + " test data");
+        System.out.println("Training processs being stared!! ");
+        KMeansModel kmean_model = kMeans.fit(train_data);
+        Dataset<Row> predictiondata = kmean_model.transform(test_data);
+        ClusteringEvaluator evaluator = new ClusteringEvaluator().setPredictionCol("Cluster").setFeaturesCol("vector_features");
+        double silhouette = evaluator.evaluate(predictiondata);
+        System.out.println("Silhouette with squared euclidean distance = " + silhouette);
+        predictiondata.show();
     }
+
 }

@@ -1,4 +1,4 @@
-package vn.edu.ctu.cit.thesis;
+package vn.edu.ctu.cit.thesis.TrainHU;
 
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
@@ -17,7 +17,7 @@ import java.io.IOException;
 
 public class OnevsRestModel {
     private static final String APP_NAME = "ProcessData";
-    private static final String JSON_FILE_PATH = "data/newdataset/*";
+    private static final String JSON_FILE_PATH = "data/data-4-label/*";
     private static final String HDFS_PATH = "hdfs://localhost:9000/data/";
     private static final String MODEL_NAME = "Kmean_model";
     private static final String VERSION = "1.0";
@@ -40,6 +40,7 @@ public class OnevsRestModel {
             new StructField("DistanceWithSkull", DataTypes.FloatType, true, Metadata.empty()),
             new StructField("Diameter", DataTypes.FloatType, true, Metadata.empty()),
             new StructField("Solidity", DataTypes.FloatType, true, Metadata.empty()),
+            new StructField("ConvexArea", DataTypes.FloatType, true, Metadata.empty()),
             new StructField("BBULX", DataTypes.FloatType, true, Metadata.empty()),
             new StructField("BBULY", DataTypes.FloatType, true, Metadata.empty()),
             new StructField("BBWith", DataTypes.FloatType, true, Metadata.empty()),
@@ -61,14 +62,14 @@ public class OnevsRestModel {
         SparkSession sparksession = new SparkSession(sc);
         double[] weights = {0.8, 0.2};
         int stop_flag = 0;
-//        do {
+        do {
         Dataset<Row> input_data_raw = sparksession.read()
                 .option("mode", "PERMISSIVE")
                 .option("Charset", "utf-8")
                 .schema(DicomFileDataSchema)
                 .json(JSON_FILE_PATH);
         String[] arrayColFeatures = {"Area", "CentroidX", "CentroidY", "Perimeter", "DistanceWithSkull", "Diameter"
-                , "Solidity", "BBULX", "BBULY", "BBWith", "BBHeight", "FilledArea", "Extent", "Eccentricity", "MajorAxisLength"
+                , "Solidity","ConvexArea", "BBULX", "BBULY", "BBWith", "BBHeight", "FilledArea", "Extent", "Eccentricity", "MajorAxisLength"
                 , "MinorAxisLength", "Orientation"};
         VectorAssembler vector_assembler_chose_feature = new VectorAssembler()
                 .setInputCols(arrayColFeatures)
@@ -96,15 +97,17 @@ public class OnevsRestModel {
                 .setMetricName("accuracy");
         double accuracy = evaluator.evaluate(predictions);
         System.out.println("Test Error = " + (1 - accuracy));
-//            if (accuracy >= 0.95) {
-//                try {
-//                    ovrModel.save("data/newonevsall" + String.format("%.4f", accuracy));
-//                } catch (IOException e) {
-//                    e.printStackTrace();
-//                }
-//                stop_flag= 1;
-//            }
-//        }while(stop_flag == 0);
+            if (accuracy >= 0.95) {
+                try {
+                    ovrModel.save("data/newmodel/newonevsall" + String.format("%.4f", accuracy));
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            if(accuracy>=0.98){
+                stop_flag= 1;
+            }
+        }while(stop_flag == 0);
 
     }
 }

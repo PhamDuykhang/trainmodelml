@@ -1,10 +1,10 @@
-package vn.edu.ctu.cit.thesis;
+package vn.edu.ctu.cit.thesis.TrainHU;
 
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
-import org.apache.spark.ml.clustering.KMeans;
-import org.apache.spark.ml.clustering.KMeansModel;
-import org.apache.spark.ml.evaluation.ClusteringEvaluator;
+import org.apache.spark.ml.classification.MultilayerPerceptronClassificationModel;
+import org.apache.spark.ml.classification.MultilayerPerceptronClassifier;
+import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator;
 import org.apache.spark.ml.feature.VectorAssembler;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
@@ -14,9 +14,10 @@ import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 
-public class CreateKmeanModel {
+import java.io.IOException;
+
+public class MultilayerClass {
     private static final String APP_NAME = "ProcessData";
-    private static final String CSV_FILE_PATH = "data/stable/*";
     private static final String JSON_FILE_PATH = "data/newdataset/*";
     private static final String HDFS_PATH = "hdfs://localhost:9000/data/";
     private static final String MODEL_NAME = "Kmean_model";
@@ -64,7 +65,7 @@ public class CreateKmeanModel {
                 .option("Charset", "utf-8")
                 .schema(DicomFileDataSchema)
                 .json(JSON_FILE_PATH);
-        System.out.println("The schema of data");
+
         String[] arrayColFeatures = {"Area", "CentroidX", "CentroidY", "Perimeter", "DistanceWithSkull", "Diameter"
                 , "Solidity", "BBULX", "BBULY", "BBWith", "BBHeight", "FilledArea", "Extent", "Eccentricity", "MajorAxisLength"
                 , "MinorAxisLength", "Orientation"};
@@ -72,23 +73,32 @@ public class CreateKmeanModel {
                 .setInputCols(arrayColFeatures)
                 .setOutputCol("vector_features");
         Dataset<Row> data = vector_assembler_chose_feature.transform(input_data_raw);
-        KMeans kMeans = new KMeans()
-                .setK(4)
-                .setFeaturesCol("vector_features")
-                .setPredictionCol("Cluster");
-
         Dataset<Row>[] data_slipt = data.randomSplit(weights);
         Dataset<Row> train_data = data_slipt[0];
         Dataset<Row> test_data = data_slipt[1];
-        System.out.println("Total: " + train_data.count() + " train data");
-        System.out.println("Total: " + test_data.count() + " test data");
-        System.out.println("Training processs being stared!! ");
-        KMeansModel kmean_model = kMeans.fit(train_data);
-        Dataset<Row> predictiondata = kmean_model.transform(test_data);
-        ClusteringEvaluator evaluator = new ClusteringEvaluator().setPredictionCol("Cluster").setFeaturesCol("vector_features");
-        double silhouette = evaluator.evaluate(predictiondata);
-        System.out.println("Silhouette with squared euclidean distance = " + silhouette);
-        predictiondata.show();
-    }
+        int[] layers = new int[]{17, 10, 7, 5, 4};
+        MultilayerPerceptronClassifier trainer = new MultilayerPerceptronClassifier()
+                .setLayers(layers)
+                .setBlockSize(128)
+                .setSeed(1234L)
+                .setLabelCol("Label")
+                .setFeaturesCol("vector_features")
+                .setMaxIter(10000);
+        MultilayerPerceptronClassificationModel model = trainer.fit(train_data);
+        Dataset<Row> result = model.transform(test_data);
+        Dataset<Row> predictionAndLabels = result.select("prediction", "Label");
+        MulticlassClassificationEvaluator evaluator = new MulticlassClassificationEvaluator()
+                .setMetricName("accuracy").setLabelCol("Label");
+        System.out.println("Test set accuracy = " + evaluator.evaluate(predictionAndLabels));
+        double accc = evaluator.evaluate(predictionAndLabels);
+        if (accc >= 0.9) {
+            try {
+                model.save("data/mlp_" + String.format("%.3f", accc));
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
 
+        }
+
+    }
 }
