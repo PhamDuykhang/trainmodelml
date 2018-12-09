@@ -38,6 +38,8 @@ public class OneVsAllTrain implements TrainingModelIF {
             Dataset<Row>[] data_slipt = this.data.randomSplit(weights);
             Dataset<Row> train = data_slipt[0];
             Dataset<Row> test = data_slipt[1];
+            System.out.println("Trainingggggg !!!!!!!!!!!!!!");
+            System.out.println("--------------------------------");
             OneVsRestModel ovrModel = ovr.fit(this.data);
             Dataset<Row> predictions = ovrModel.transform(test)
                     .select("prediction", "Label");
@@ -46,6 +48,7 @@ public class OneVsAllTrain implements TrainingModelIF {
             double accuracy = evaluator.evaluate(predictions);
             if (accuracy >= 0.95) {
                 try {
+                    System.out.println("Saving model");
                     ovrModel.save(hdfs_url + String.format("%.4f", accuracy));
                 } catch (IOException e) {
                     e.printStackTrace();

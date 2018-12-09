@@ -30,7 +30,7 @@ public class MPLTrain implements TrainingModelIF {
             Dataset<Row>[] data_slipt = this.data.randomSplit(weights);
             Dataset<Row> train_data = data_slipt[0];
             Dataset<Row> test_data = data_slipt[1];
-            int[] layers = new int[]{17, 10, 7, 5, 4};
+            int[] layers = new int[]{18, 10, 7, 5, 5};
             MultilayerPerceptronClassifier trainer = new MultilayerPerceptronClassifier()
                     .setLayers(layers)
                     .setBlockSize(128)
@@ -38,6 +38,8 @@ public class MPLTrain implements TrainingModelIF {
                     .setLabelCol("Label")
                     .setFeaturesCol("vector_features")
                     .setMaxIter(10000);
+            System.out.println("Trainingggggg!!!!!! ");
+            System.out.println("---------------------------------------");
             MultilayerPerceptronClassificationModel model = trainer.fit(train_data);
             Dataset<Row> result = model.transform(test_data);
             Dataset<Row> predictionAndLabels = result.select("prediction", "Label");
@@ -45,8 +47,9 @@ public class MPLTrain implements TrainingModelIF {
                     .setMetricName("accuracy").setLabelCol("Label");
             System.out.println("Test set accuracy = " + evaluator.evaluate(predictionAndLabels));
             double accc = evaluator.evaluate(predictionAndLabels);
-            if (accc >= 0.9) {
+            if (accc >= 0.8) {
                 try {
+                    System.out.println("Saving model");
                     model.save(hdfs_url + String.format("%.3f", accc));
                     stop_flag = 1;
                 } catch (IOException e) {

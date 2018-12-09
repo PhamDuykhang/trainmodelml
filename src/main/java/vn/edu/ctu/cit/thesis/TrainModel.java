@@ -8,7 +8,7 @@ import org.apache.spark.sql.SparkSession;
 public class TrainModel {
     public static void main(String[] args) {
         String model_Type = args[0];
-        String hdfs_url  = args[1]+args[0];
+        String hdfs_url  = args[1]+"/"+args[0];
         String hdfs_data_set = args[2];
         SparkConf conf = new SparkConf().setAppName("Train");
         SparkSession spark = SparkSession.builder()
